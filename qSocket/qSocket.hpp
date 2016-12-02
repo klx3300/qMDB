@@ -168,8 +168,9 @@ namespace qLibrary{
             if(info.domain==AF_INET){
                 char* buffer=(char*)malloc(sizeof(char)*MAX_DIAGRAM_LENGTH);
                 struct sockaddr_in srcinfo;
+                unsigned int fck=sizeof(struct sockaddr_in);
                 memset(&srcinfo,0,sizeof(struct sockaddr_in));
-                int dtlen=::recvfrom(info.fileDescriptor,buffer,MAX_DIAGRAM_LENGTH,flags,(struct sockaddr*)&srcinfo,NULL);
+                int dtlen=::recvfrom(info.fileDescriptor,buffer,MAX_DIAGRAM_LENGTH,flags,(struct sockaddr*)&srcinfo,&fck);
                 if(dtlen==-1){
                     DiagramSocketReceiveException e("Func call recvfrom() returned -1.");
                     throw e;
@@ -178,13 +179,11 @@ namespace qLibrary{
                     return "";
                 }else{
                     // encode the result
-                    uint32_t saddr=ntohl(srcinfo.sin_addr.s_addr);
                     char addrbuffer[64];
-                    inet_ntop(AF_INET,&srcinfo,addrbuffer,64);
-                    who=addrbuffer;
+                    who=inet_ntoa(srcinfo.sin_addr);
                     // clear addrbuffer
                     memset(addrbuffer,0,64);
-                    sprintf(addrbuffer,"%d",srcinfo.sin_port);
+                    sprintf(addrbuffer,"%d",ntohs(srcinfo.sin_port));
                     who=who+":"+addrbuffer;
                     buffer[dtlen]='\0';
                     std::string retdt(buffer);
