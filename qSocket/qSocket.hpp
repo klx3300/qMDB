@@ -1,5 +1,6 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <string>
 #include <cstring>
 #include <cstdlib>
@@ -49,10 +50,6 @@ namespace qLibrary{
             public:
                 SocketBindException(std::string errmsg) : SocketException(errmsg){};
         };
-        class SocketConnectException : public SocketException{
-            public:
-                SocketConnectException(std::string errmsg) : SocketException(errmsg){};
-        };
         class SocketInvalidParamsException : public SocketException{
             public:
                 SocketInvalidParamsException(std::string errmsg) : SocketException(errmsg){};
@@ -72,6 +69,26 @@ namespace qLibrary{
         class DiagramSocketSendException : public DiagramSocketException{
             public:
                 DiagramSocketSendException(std::string errmsg) : DiagramSocketException(errmsg){};
+        };
+        class StreamSocketException : public SocketException{
+            public:
+                StreamSocketException(std::string errmsg) : SocketException(errmsg){};
+        };
+        class StreamSocketConnectException : public StreamSocketException{
+            public:
+                StreamSocketConnectException(std::string errmsg) : StreamSocketException(errmsg){};
+        };
+        class StreamSocketListenException : public StreamSocketException{
+            public:
+                StreamSocketListenException(std::string errmsg) : StreamSocketException(errmsg){};
+        };
+        class StreamSocketAcceptException : public StreamSocketException{
+            public:
+                StreamSocketAcceptException(std::string errmsg) : StreamSocketException(errmsg){};
+        };
+        class StreamSocketIOException : public StreamSocketException{
+            public:
+                StreamSocketIOException(std::string errmsg) : StreamSocketException(errmsg){};
         };
         class SocketInformation{
             public:
@@ -100,10 +117,13 @@ namespace qLibrary{
                 StreamSocket(SocketInformation info):Socket(info){};
                 StreamSocket(int fileDescriptor):Socket(fileDescriptor){};
                 StreamSocket(int domain,int protocol):Socket(domain,SocketType::STREAM,protocol){};
-                Socket& connect(std::string address);
-                Socket& listen(void);
-                Socket& listen(int unsettled_connections_limitation);
-                SocketInformation accept();
+                StreamSocket& connect(std::string address);
+                StreamSocket& listen(void);
+                StreamSocket& listen(int unsettled_connections_limitation);
+                SocketInformation accept(std::string &srcaddr);
+                StreamSocket& write(std::string content);
+                std::string read();
+                std::string nonblockRead();
         };
         class DiagramSocket : public Socket{
             public:
@@ -222,7 +242,7 @@ namespace qLibrary{
             }
         }
         // StreamSocket
-        Socket& StreamSocket::connect(std::string address){
+        StreamSocket& StreamSocket::connect(std::string address){
             if(info.domain==AF_INET){
                 struct sockaddr_in addr;
                 memset(&addr,0,sizeof(struct sockaddr_in));
@@ -235,7 +255,7 @@ namespace qLibrary{
                 addr.sin_port=htons(atoi(address.substr(separator_pos+1,std::string::npos).c_str()));
                 addr.sin_addr=qLibrary::str_to_ipv4addr(address);
                 if(::connect(info.fileDescriptor,(struct sockaddr*)&addr,sizeof(struct sockaddr_in))==-1){
-                    SocketConnectException e("Func call connect() returned -1.");
+                    StreamSocketConnectException e("Func call connect() returned -1.");
                     throw e;
                 }
             }else{
@@ -244,7 +264,73 @@ namespace qLibrary{
             }
             return *this;
         }
-
+        StreamSocket& StreamSocket::listen(void){
+            return StreamSocket::listen(128);
+        }
+        StreamSocket& StreamSocket::listen(int limitation){
+            int retflg=::listen(info.fileDescriptor,limitation);
+            if(retflg==-1){
+                StreamSocketListenException e("Func call listen() returns -1");
+                throw e;
+            }
+            return *this;
+        }
+        SocketInformation StreamSocket::accept(std::string &who){
+            SocketInformation nsinfo;
+            nsinfo.domain=info.domain;
+            nsinfo.protocol=info.protocol;
+            nsinfo.type=info.type;
+            if(info.domain==AF_INET){
+                struct sockaddr_in srcaddr;
+                socklen_t srcaddr_len=sizeof(struct sockaddr_in);
+                nsinfo.fileDescriptor=::accept(info.fileDescriptor,(struct sockaddr*)&srcaddr,&srcaddr_len);
+                if(nsinfo.fileDescriptor==-1){
+                    StreamSocketAcceptException e("Func call accept() returns -1.");
+                    throw e;
+                }
+                char addrbuffer[64];
+                who=inet_ntoa(srcaddr.sin_addr);
+                // clear addrbuffer
+                memset(addrbuffer,0,64);
+                sprintf(addrbuffer,"%d",ntohs(srcaddr.sin_port));
+                who=who+":"+addrbuffer;
+                return nsinfo;
+            }else{
+                SocketInvalidParamsException e("Not valid Domain.");
+                throw e;
+            }
+        }
+        std::string StreamSocket::read(){
+            const int MAX_BUFFER_SIZE=8192;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
+            buffer[rlength]='\0';
+            content+=buffer;
+            return content;
+        }
+        std::string StreamSocket::nonblockRead(){
+            const int MAX_BUFFER_SIZE=8192;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=0;
+            do{
+                rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
+                buffer[rlength]='\0';
+                content+=buffer;
+            }while(rlength==0);
+            return content;
+        }
+        StreamSocket& StreamSocket::write(std::string content){
+            int written=::write(info.fileDescriptor,content.c_str(),content.length());
+            if(written==-1){
+                StreamSocketIOException e("Func call write() returned -1.");
+                throw e;
+            }
+            return *this;
+        }
     }
 }
 
