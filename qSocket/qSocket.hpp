@@ -96,6 +96,7 @@ namespace qLibrary{
                 int domain;
                 int type;
                 int protocol;
+                std::string address;//optional
         };
         class Socket{
             public:
@@ -317,6 +318,19 @@ namespace qLibrary{
                 }
             }while(rlength!=0);
             return content;
+        }
+        std::string StreamSocket::read(int length){
+            const int MAX_BUFFER_SIZE=length;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=0;
+            rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
+            for(int i=0;i<rlength;i++){
+                content+=buffer[i];
+            } 
+            return content;
+
         }
         std::string StreamSocket::nonblockRead(){
             const int MAX_BUFFER_SIZE=8192;

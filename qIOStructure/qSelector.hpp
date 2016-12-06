@@ -23,6 +23,7 @@ namespace qLibrary{
                 std::vector<StreamSocket> ex;
                 int wait(int sec,int FLAGS);// if flags NOEXCEED given, the first param will be ignored.
                 std::vector<StreamSocket> gets(int FLAG);// only give one or it will fail.
+                bool checkListener(StreamSocket listener);
             private:
                 fd_set readfds;
                 fd_set writefds;
@@ -69,6 +70,10 @@ namespace qLibrary{
                 exceedtime.tv_usec=0;
                 return ::select(largestfd+1,&readfds,&writefds,&exceptfds,&exceedtime);
             }
+        }
+
+        bool qSelector::checkListener(StreamSocket listener){
+            return FD_ISSET(listener.info.fileDescriptor,&readfds);
         }
 
         std::vector<StreamSocket> qSelector::gets(int FLAG){

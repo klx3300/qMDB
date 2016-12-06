@@ -44,10 +44,10 @@ using namespace qLibrary;
 
 std::priority_queue<Slave,std::vector<Slave>,SlaveComparator> slaves;
 std::unordered_map<std::string,std::list<std::string> > keys;
-qSocket::Socket* current_sock=NULL;// for operation funcs to operate.
-qSocket::Socket server_listener(qSocket::SocketDomain::IPV4,qSocket::SocketType::STREAM,qSocket::SocketProtocol::DEFAULT);// listener
-std::vector<qSocket::Socket> slave_connections;
-std::vector<qSocket::Socket> client_connections;
+qSocket::StreamSocket* current_sock=NULL;// for operation funcs to operate.
+qSocket::StreamSocket server_listener(qSocket::SocketDomain::IPV4,qSocket::SocketProtocol::DEFAULT);// listener
+std::vector<qSocket::StreamSocket> slave_connections;
+std::vector<qSocket::StreamSocket> client_connections;
 qSocket::qSelector selector;
 
 int redundance=0;
@@ -66,7 +66,34 @@ int operationSync(std::vector<std::string> keys);// reconnected slave to sync it
 int operationUnregister(std::string slaveaddr);// unregister an slave
 
 int main(void){
-
+    // create listener socket
+    server_listener.bind(serveraddr);
+    server_listener.listen();
+    selector.r.push_back(server_listener);
+    while(1){
+        // start listening
+        selector.wait(0,qSocket::qSelectorFlags::READ | qSocket::qSelectorFlags::NOEXCEED);
+        std::vector<qSocket::StreamSocket> pr=selector.gets(qSocket::qSelectorFlags::READ);
+        // check is listened.
+        if(selector.checkListener(server_listener.info.fileDescriptor)){
+            std::string buffer;
+            // accept new connections
+            // warning: all accepted connections are marked as [CLIENT]
+            // [SLAVE] dbs will be registered by a [CLIENT] and connected by [MASTER]
+            client_connections.push_back(server_listener.accept(&buffer));
+            std::cout << "[INFO] Connection with " << buffer << " established." << std::endl;
+            (client_connections.end-1).info.address=buffer;
+        }else{
+            std::string instruction_buffer;
+            // that means an request are sent by a client.
+            // let check what it is.
+            for( auto x : pr){
+                current_sock=x;// for functions to take overall controll
+                // get given instructions
+            }
+        }
+        
+    }
 
     return 0;
 }
