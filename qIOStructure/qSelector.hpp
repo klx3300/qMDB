@@ -13,6 +13,7 @@ namespace qLibrary{
             const int READ=1;
             const int WRITE=2;
             const int EXCEPTION=4;
+            const int NOEXCEED=8;
         }
         class qSelector{
             public:
@@ -20,7 +21,7 @@ namespace qLibrary{
                 std::vector<StreamSocket> r;
                 std::vector<StreamSocket> w;
                 std::vector<StreamSocket> ex;
-                int wait(int FLAGS);// it's save to give anything to references you don't need to use.
+                int wait(int sec,int FLAGS);// if flags NOEXCEED given, the first param will be ignored.
                 std::vector<StreamSocket> gets(int FLAG);// only give one or it will fail.
             private:
                 fd_set readfds;
@@ -31,7 +32,7 @@ namespace qLibrary{
         qSelector::qSelector(){
         }
         
-        int qSelector::wait(int FLAGS){
+        int qSelector::wait(int sec,int FLAGS){
             FD_ZERO(&readfds);
             FD_ZERO(&writefds);
             FD_ZERO(&exceptfds);
@@ -60,7 +61,14 @@ namespace qLibrary{
                     FD_SET(x.info.fileDescriptor,&exceptfds);
                 }
             }
-            return ::select(largestfd+1,&readfds,&writefds,&exceptfds,NULL);//block till some of them ready;
+            if( FLAGS & qSelectorFlags::NOEXCEED ){
+                return ::select(largestfd+1,&readfds,&writefds,&exceptfds,NULL);//block till some of them ready;
+            }else{
+                struct timeval exceedtime;
+                exceedtime.tv_sec=sec;
+                exceedtime.tv_usec=0;
+                return ::select(largestfd+1,&readfds,&writefds,&exceptfds,&exceedtime);
+            }
         }
 
         std::vector<StreamSocket> qSelector::gets(int FLAG){

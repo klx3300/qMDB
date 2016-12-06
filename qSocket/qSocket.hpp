@@ -101,10 +101,10 @@ namespace qLibrary{
             public:
                 Socket();
                 Socket(SocketInformation info){Socket::init(info);};
-                Socket(int fileDescriptor){Socket::init(fileDescriptor);}; // Deprecated. Strongly recommend not to use this.
+                Socket(int fileDescriptor){Socket::init(fileDescriptor);}; // Deprecated. Strongly recommend NOT to use this.
                 Socket(int domain,int type,int protocol){Socket::init(domain,type,protocol);};
-                Socket& init(int fileDescriptor);
-                Socket& init(SocketInformation info);// Deprecated. Strongly recommend not to use this.
+                Socket& init(int fileDescriptor);// Deprecated. Strongly recommend NOT to use this.
+                Socket& init(SocketInformation info);
                 Socket& init(int domain,int type,int protocol);
                 Socket& bind(std::string address);
                 void close(void){::shutdown(info.fileDescriptor,2);};
@@ -123,7 +123,9 @@ namespace qLibrary{
                 SocketInformation accept(std::string &srcaddr);
                 StreamSocket& write(std::string content);
                 std::string read();
+                std::string read(int length);
                 std::string nonblockRead();
+                std::string nonblockRead(int length);
         };
         class DiagramSocket : public Socket{
             public:
@@ -205,8 +207,10 @@ namespace qLibrary{
                     memset(addrbuffer,0,64);
                     sprintf(addrbuffer,"%d",ntohs(srcinfo.sin_port));
                     who=who+":"+addrbuffer;
-                    buffer[dtlen]='\0';
-                    std::string retdt(buffer);
+                    std::string retdt("");
+                    for(int i=0;i<dtlen;i++){
+                        retdt+=buffer[i];
+                    }
                     return retdt;
                 }
             }else{
@@ -305,9 +309,13 @@ namespace qLibrary{
             char buffer[MAX_BUFFER_SIZE+1];
             memset(buffer,0,MAX_BUFFER_SIZE);
             std::string content("");
-            int rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
-            buffer[rlength]='\0';
-            content+=buffer;
+            int rlength=0;
+            do{
+                rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
+                for(int i=0;i<rlength;i++){
+                    content+=buffer[i];
+                }
+            }while(rlength!=0);
             return content;
         }
         std::string StreamSocket::nonblockRead(){
@@ -318,9 +326,9 @@ namespace qLibrary{
             int rlength=0;
             do{
                 rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
-                buffer[rlength]='\0';
-                content+=buffer;
-            }while(rlength==0);
+                for(int i=0;i<rlength;i++)
+                    content+=buffer[i];
+            }while(rlength!=0);
             return content;
         }
         StreamSocket& StreamSocket::write(std::string content){
