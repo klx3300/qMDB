@@ -125,6 +125,9 @@ namespace qLibrary{
                 StreamSocket& write(std::string content);
                 std::string read();
                 std::string read(int length);
+                char readchar();
+                unsigned int readuint();
+                int readint();
                 std::string nonblockRead();
                 std::string nonblockRead(int length);
         };
@@ -330,7 +333,35 @@ namespace qLibrary{
                 content+=buffer[i];
             } 
             return content;
+        }
 
+        char StreamSocket::readchar(){
+            const int MAX_BUFFER_SIZE=1;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=0;
+            rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
+            for(int i=0;i<rlength;i++){
+                content+=buffer[i];
+            } 
+            return buffer[0];
+        }
+
+        unsigned int StreamSocket::readuint(){
+            const int MAX_BUFFER_SIZE=4;
+            unsigned int buffer;
+            int rlength=0;
+            rlength=::read(info.fileDescriptor,&buffer,MAX_BUFFER_SIZE);
+            return buffer;
+        }
+
+        int StreamSocket::readint(){
+            const int MAX_BUFFER_SIZE=4;
+            int buffer;
+            int rlength=0;
+            rlength=::read(info.fileDescriptor,&buffer,MAX_BUFFER_SIZE);
+            return buffer;
         }
         std::string StreamSocket::nonblockRead(){
             const int MAX_BUFFER_SIZE=8192;

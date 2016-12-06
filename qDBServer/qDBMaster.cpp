@@ -90,6 +90,7 @@ int main(void){
             for( auto x : pr){
                 current_sock=x;// for functions to take overall controll
                 // get given instructions
+                
             }
         }
         
