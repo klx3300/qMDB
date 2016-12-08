@@ -130,6 +130,7 @@ namespace qLibrary{
                 int readint();
                 std::string nonblockRead();
                 std::string nonblockRead(int length);
+                bool checkAlive();
         };
         class DiagramSocket : public Socket{
             public:
@@ -344,7 +345,7 @@ namespace qLibrary{
             rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
             for(int i=0;i<rlength;i++){
                 content+=buffer[i];
-            } 
+            }
             return buffer[0];
         }
 
@@ -375,6 +376,18 @@ namespace qLibrary{
                     content+=buffer[i];
             }while(rlength!=0);
             return content;
+        }
+        bool StreamSocket::checkAlive(){
+            const int MAX_BUFFER_SIZE=1;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=0;
+            rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
+            for(int i=0;i<rlength;i++){
+                content+=buffer[i];
+            }
+            return buffer[0];
         }
         StreamSocket& StreamSocket::write(std::string content){
             int written=::write(info.fileDescriptor,content.c_str(),content.length());
