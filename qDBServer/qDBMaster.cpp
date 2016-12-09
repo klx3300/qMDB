@@ -13,22 +13,33 @@
 #include <utility>
 #include <list>
 #include <string.h>
+#include <iostream>
+#include <errno.h>
 
 // const values
 
-const std::string serveraddr="127.0.0.1:55826"
+const std::string serveraddr="127.0.0.1:45175";
 
 // const values
+
+void bsafe_add(std::string& targetstr,char* src,int size){
+    for(int i=0;i<size;i++){
+        targetstr+=(*(src+i));
+    }
+}
 
 class Slave{
     public:
         Slave();
         std::string ipaddr;//include port. e.g.127.0.0.1:54217
         int counts;
-        qLibrary::qSocket::StreamSocket sock(qLibrary::qSocket::SocketDomain::IPV4,qLibrary::qSocket::SocketProtocol::DEFAULT);
+        qLibrary::qSocket::StreamSocket sock;
 };
 
 Slave::Slave(){
+    sock.info.domain=qLibrary::qSocket::SocketDomain::IPV4;
+    sock.info.type=qLibrary::qSocket::SocketType::STREAM;
+    sock.info.protocol=qLibrary::qSocket::SocketProtocol::DEFAULT;
     ipaddr="";
     counts=0;
 }
@@ -46,9 +57,11 @@ using namespace qLibrary;
 
 std::priority_queue<Slave,std::vector<Slave>,SlaveComparator> slaves;
 std::unordered_map<std::string,std::list<std::string> > keys;
-qSocket::StreamSocket* current_sock=NULL;// for operation funcs to operate.
-qSocket::StreamSocket server_listener(qSocket::SocketDomain::IPV4,qSocket::SocketProtocol::DEFAULT);// listener
+std::unordered_map<std::string,Slave> slavedb;
+qSocket::StreamSocket current_sock;// for operation funcs to operate.
+qSocket::StreamSocket server_listener;// listener
 std::vector<qSocket::StreamSocket> client_connections;
+std::vector<qSocket::StreamSocket> unidentified_connections;
 qSocket::qSelector selector;
 
 const int GENERAL_TIMEOUT=5;
@@ -68,22 +81,34 @@ int operationUnregister(std::string slaveaddr);// unregister an slave
 
 int main(void){
     // create listener socket
-    server_listener.bind(serveraddr);
+    server_listener.info.domain=qSocket::SocketDomain::IPV4;
+    server_listener.info.type=qSocket::SocketType::STREAM;
+    server_listener.info.protocol=qSocket::SocketProtocol::DEFAULT;
+    try{
+    server_listener.open().bind(serveraddr);
+    }catch(qSocket::SocketBindException e){
+        std::cout << e.errmsg << " ERRNO is " << errno << std::endl;
+    }
     server_listener.listen();
-    selector.r.push_back(server_listener);
     while(1){
         // start listening
+        selector.r.clear();
+        selector.r.push_back(server_listener);
+        for(auto cc : client_connections){
+            selector.r.push_back(cc);
+        }
+        for(auto uc: unidentified_connections){
+            selector.r.push_back(uc);
+        }
         selector.wait(0,qSocket::qSelectorFlags::READ | qSocket::qSelectorFlags::NOEXCEED);
         std::vector<qSocket::StreamSocket> pr=selector.gets(qSocket::qSelectorFlags::READ);
         // check is listened.
         if(selector.checkListener(server_listener.info.fileDescriptor)){
             std::string buffer;
             // accept new connections
-            // warning: all accepted connections are marked as [CLIENT]
-            // [SLAVE] dbs will be registered by a [CLIENT] and connected by [MASTER]
-            client_connections.push_back(server_listener.accept(&buffer));
+            unidentified_connections.push_back(server_listener.accept(buffer));
             std::cout << "[INFO] Connection with " << buffer << " established." << std::endl;
-            (client_connections.end()-1)->info.address=buffer;
+            (unidentified_connections.end()-1)->info.address=buffer;
         }else{
             std::string instruction_buffer;
             // that means an request are sent by a client.
@@ -93,59 +118,95 @@ int main(void){
                 // get given instructions
                 char instruct=x.readchar();
                 switch(instruct){
-                    case 1:
+                    case 1:{
                         // set
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
                         unsigned int valuelen=x.readuint();
                         std::string value=x.read(valuelen);
                         operationSet(key,value);
-                        break;
-                    case 2:
+                        break;}
+                    case 2:{
                         // delete
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
                         operationDelete(key);
-                        break;
-                    case 3:
+                        break;}
+                    case 3:{
                         // exist
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
                         operationExist(key);
-                        break;
-                    case 4:
+                        break;}
+                    case 4:{
                         // get
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
                         operationGet(key);
-                        break;
-                    case 5:
+                        break;}
+                    case 5:{
                         // register
-                        unsigned int addrlen=x.readuint();
-                        std::string addr=x.read(addrlen);
-                        operationRegister(addr);
-                        break;
-                    case 6:
+                        //unsigned int addrlen=x.readuint();
+                        //std::string addr=x.read(addrlen);
+                        //operationRegister(addr);
+                        break;}
+                    case 6:{
                         // unregister
                         unsigned int addrlen=x.readuint();
                         std::string addr=x.read(addrlen);
                         operationUnregister(addr);
-                        break;
-                    case 7:
+                        break;}
+                    case 7:{
                         // sync
-                        break;
-                    case 8:
+                        break;}
+                    case 8:{
                         // multi
-                        break;
-                    case 0;
+                        break;}
+                    case 0:{
                         // that occurred when a socket attempt to close(READ ENDS WITH EOF)
+                        std::cout << "[INFO] " << x.info.address << " disconnected." << std::endl;
                         x.close();
-                        for(std::vector<qSocket::StreamSocket>::Iterator i=client_connections.begin;i!=client_connections.end();i++){
-                            if((*i).info.fileDescriptor==x.fileDescriptor){
-                                client_connections.erase(i);
+                        bool FLG=false;
+                        for(std::vector<qSocket::StreamSocket>::iterator i=client_connections.begin();i!=client_connections.end();i++){
+                            if((*i).info.fileDescriptor==x.info.fileDescriptor){
+                                client_connections.erase(i);FLG=true;break;
                             }
                         }
-                        break;
+                        if(FLG)break;
+                        FLG=false;
+                        for(std::vector<qSocket::StreamSocket>::iterator i=unidentified_connections.begin();i!=unidentified_connections.end();i++){
+                            if((*i).info.fileDescriptor==x.info.fileDescriptor){
+                                unidentified_connections.erase(i);FLG=true;break;
+                            }
+                        }
+                        if(FLG)break;
+                        slavedb.erase(x.info.address);
+                        break;}
+                    case 41:{
+                        // remove you from unauthed
+                        for(std::vector<qSocket::StreamSocket>::iterator uc=unidentified_connections.begin();uc!=unidentified_connections.end();uc++){
+                            if((*uc).info.fileDescriptor==x.info.fileDescriptor){
+                                unidentified_connections.erase(uc);
+                                break;
+                            }
+                        }
+                        Slave sl;
+                        sl.sock=x;
+                        sl.ipaddr=x.info.address;
+                        slaves.push(sl);
+                        slavedb[sl.ipaddr]=sl;
+                        std::cout << "[INFO] " << sl.ipaddr << " declared himself SLAVE." << std::endl;
+                        break;}
+                    case 42:{
+                        for(std::vector<qSocket::StreamSocket>::iterator uc=unidentified_connections.begin();uc!=unidentified_connections.end();uc++){
+                            if((*uc).info.fileDescriptor==x.info.fileDescriptor){
+                                unidentified_connections.erase(uc);
+                                break;
+                            }
+                        }
+                        client_connections.push_back(x);
+                        std::cout << "[INFO] " << x.info.address << " declared himself CLIENT." << std::endl;
+                        break;}
                     default:
                         // todo:complete this
                         break;
@@ -164,45 +225,54 @@ int operationSet(std::string key,std::string value){
     auto pos=keys.find(key);
     if(pos!=keys.end()){
         for(auto& ss : pos->second){
-            for(auto &sr : slaves){
-                if(sr.ipaddr==ss){
-                    char[9+key.length()+value.length()] dt;
-                    memset(dt,0,9+key.length()+value.length());
-                    char i=1;
-                    memcpy(dt,&i,1);
-                    memcpy(dt+1,&(((unsigned int)key.length())),4);
-                    memcpy(dt+5,key.c_str(),key.length());
-                    memcpy(dt+5+key.length(),&(((unsigned int)value.length())),4);
-                    memcpy(dt+9+key.length(),value.c_str(),value.length());
-                    // send
-                    std::string cmp(dt);
-                    sr.sock.write(cmp);
-                }
-            }
-        }
+            char dt[9+key.length()+value.length()];
+            memset(dt,0,9+key.length()+value.length());
+            char i=1;
+            unsigned int ktmp;
+            memcpy(dt,&i,1);
+            ktmp=(unsigned int)key.length();
+            memcpy(dt+1,&ktmp,4);
+            memcpy(dt+5,key.c_str(),key.length());
+            ktmp=value.length();
+            memcpy(dt+5+key.length(),&ktmp,4);
+            memcpy(dt+9+key.length(),value.c_str(),value.length());
+            // send
+            std::string cmp;
+            bsafe_add(cmp,dt,9+key.length()+value.length());
+            if(slavedb.find(ss)!=slavedb.end())
+                slavedb[ss].sock.write(cmp);
+        } 
+        
     }else{
         // find some new slaves to storage this
         int cntl=0;std::vector<Slave> sls;
         do{
             cntl++;
+            while(slavedb.find(slaves.top().ipaddr)==slavedb.end())
+                slaves.pop();
             sls.push_back(slaves.top());
             slaves.pop();
         }while(cntl<=redundance);
-        for(auto& sr : sls){
-            char[9+key.length()+value.length()] dt;
+        for(Slave sr : sls){
+            char dt[9+key.length()+value.length()];
             memset(dt,0,9+key.length()+value.length());
             char i=1;
+            unsigned int ktmp=key.length();
             memcpy(dt,&i,1);
-            memcpy(dt+1,&(((unsigned int)key.length())),4);
+            memcpy(dt+1,&ktmp,4);
             memcpy(dt+5,key.c_str(),key.length());
-            memcpy(dt+5+key.length(),&(((unsigned int)value.length())),4);
+            ktmp=value.length();
+            memcpy(dt+5+key.length(),&ktmp,4);
             memcpy(dt+9+key.length(),value.c_str(),value.length());
             // send
-            std::string cmp(dt);
+            std::string cmp;
+            bsafe_add(cmp,dt,9+key.length()+value.length());
             sr.sock.write(cmp);
             sr.counts++;
             slaves.push(sr);
+            keys[key].push_back(sr.ipaddr);
         }
+
     }
     char code=80;
     std::string tmp;
@@ -215,26 +285,25 @@ int operationDelete(std::string key){
     // check existence
     auto pos=keys.find(key);
     if(pos!=keys.end()){
-         for(auto& ss : pos->second){
-            for(auto& sr : slaves){
-                if(sr.ipaddr==ss){
-                    // get packs up
-                    char[5+key.length()] dt;
-                    memset(dt,0,5+key.length());
-                    char ins=2;
-                    memcpy(dt,&ins,1);
-                    memcpy(dt+1,&(((unsigned int)key.length())),4);
-                    memcpy(dt+5,key.c_str(),key.length());
-                    std::string tmp(dt);
-                    sr.sock.write(tmp);
-                }
-            }
-         }
-         // SUC
-         char x=80;
-         std::string tmp;
-         tmp+=x;
-         current_sock.write(tmp);
+        for(auto& ss : pos->second){
+            // get packs up
+            char dt[5+key.length()];
+            memset(dt,0,5+key.length());
+            char ins=2;
+            unsigned int ktmp=key.length();
+            memcpy(dt,&ins,1);
+            memcpy(dt+1,&ktmp,4);
+            memcpy(dt+5,key.c_str(),key.length());
+            std::string tmp;
+            bsafe_add(tmp,dt,5+key.length());
+            if(slavedb.find(ss)!=slavedb.end())
+                slavedb[ss].sock.write(tmp);
+        }
+        // SUC
+        char x=80;
+        std::string tmp;
+        tmp+=x;
+        current_sock.write(tmp);
     }else{
         char x=198;
         std::string tmp;
@@ -266,23 +335,34 @@ int operationGet(std::string key){
         // send requests to check
         qSocket::qSelector gselector;
         for(auto ss : pos->second){
-            for(auto sr : slaves){
-                if(sr.ipaddr==ss){
-                    gselector.r.push_back(sr);
-                    char[5+key.length()] dt;
-                    memset(dt,0,5+key.length());
-                    char ins=4;
-                    memcpy(dt,&ins,1);
-                    memcpy(dt+1,&(((unsigned int)key.length())),4);
-                    memcpy(dt+5,key.c_str(),key.length());
-                    std::string tmp(dt);
-                    sr.sock.write(tmp);
-                }
-            }
+            if(slavedb.find(ss)==slavedb.end())continue;
+            gselector.r.push_back(slavedb[ss].sock);
+            char dt[5+key.length()];
+            memset(dt,0,5+key.length());
+            char ins=4;
+            unsigned int ktmp=key.length();
+            memcpy(dt,&ins,1);
+            memcpy(dt+1,&ktmp,4);
+            memcpy(dt+5,key.c_str(),key.length());
+            std::string tmp;
+            bsafe_add(tmp,dt,5+key.length());
+            slavedb[ss].sock.write(tmp);
+
         }
+        if(gselector.r.size()==0){
+            std::string tmp;
+            tmp+=(char)40;
+            current_sock.write(tmp);
+        }return 0;
         // wait for response
         while(1){
-            gselector.wait(5,qSocket::qSelectorFlags::READ);
+            int statusno=gselector.wait(2,qSocket::qSelectorFlags::READ);
+            if(statusno==0){// time limit exceeded
+                std::string tmp;
+                tmp+=(char)40;
+                current_sock.write(tmp);
+                break;
+            }
             std::vector<qSocket::StreamSocket> ava=gselector.gets(qSocket::qSelectorFlags::READ);
             for(auto& a : ava){
                 char x=a.readchar();
@@ -301,7 +381,7 @@ int operationGet(std::string key){
                     current_sock.write(tmp);
                     break;
                 }else{
-                    for(std::vector<qSocket::StreamSocket>::Iterator iter=gselector.r.begin();iter!=gselector.r.end();iter++){
+                    for(std::vector<qSocket::StreamSocket>::iterator iter=gselector.r.begin();iter!=gselector.r.end();iter++){
                         // enjoy
                         if((*iter).info.fileDescriptor==a.info.fileDescriptor){
                             // get you down
@@ -343,7 +423,7 @@ int operationRegister(std::string slaveaddr){
 }
 
 int operationUnregister(std::string slaveaddr){
-    bool FLG_ER_SUC=false;
+    /*bool FLG_ER_SUC=false;
     for(auto iter=slaves.begin();iter!=slaves.end();iter++){
        if((*iter).ipaddr==slaveaddr){
             (*iter).sock.close();
@@ -358,5 +438,5 @@ int operationUnregister(std::string slaveaddr){
     }else{
         tmp+=(char)127;
     }
-    current_sock.write(tmp);
+    current_sock.write(tmp);*/
 }

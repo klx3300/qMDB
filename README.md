@@ -8,6 +8,8 @@ request structure:
 [][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]
 
 first byte:instruction id((program control)sock_close=0 set=1 del=2 exist=3 get=4 register=5 unregister=6 sync=7 multi=8 execute=9)
+ 41 : authenticate as SLAVE
+ 42 : authenticate as CLIENT
 
 if need loop following(for set command param)
 

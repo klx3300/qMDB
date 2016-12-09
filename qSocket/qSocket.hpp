@@ -100,13 +100,14 @@ namespace qLibrary{
         };
         class Socket{
             public:
-                Socket();
+                Socket(){};
                 Socket(SocketInformation info){Socket::init(info);};
                 Socket(int fileDescriptor){Socket::init(fileDescriptor);}; // Deprecated. Strongly recommend NOT to use this.
                 Socket(int domain,int type,int protocol){Socket::init(domain,type,protocol);};
                 Socket& init(int fileDescriptor);// Deprecated. Strongly recommend NOT to use this.
                 Socket& init(SocketInformation info);
                 Socket& init(int domain,int type,int protocol);
+                Socket& open();
                 Socket& bind(std::string address);
                 void close(void){::shutdown(info.fileDescriptor,2);};
                 SocketInformation info;
@@ -130,6 +131,8 @@ namespace qLibrary{
                 int readint();
                 std::string nonblockRead();
                 std::string nonblockRead(int length);
+                char nonblockReadchar();
+                unsigned int nonblockReaduint();
                 bool checkAlive();
         };
         class DiagramSocket : public Socket{
@@ -156,6 +159,15 @@ namespace qLibrary{
             info.domain=domain;
             info.type=type;
             info.protocol=protocol;
+            info.fileDescriptor=socket(info.domain,info.type,info.protocol);
+            if(info.fileDescriptor==-1){
+                SocketInitializingException e("Func call socket() returns -1");
+                throw e;
+            }
+            return *this;
+        }
+
+        Socket& Socket::open(){
             info.fileDescriptor=socket(info.domain,info.type,info.protocol);
             if(info.fileDescriptor==-1){
                 SocketInitializingException e("Func call socket() returns -1");
@@ -376,6 +388,34 @@ namespace qLibrary{
                     content+=buffer[i];
             }while(rlength!=0);
             return content;
+        }
+        std::string StreamSocket::nonblockRead(int length){
+            const int MAX_BUFFER_SIZE=length;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=0;
+            rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
+            for(int i=0;i<rlength;i++)
+                content+=buffer[i];
+            return content;
+        }
+        char StreamSocket::nonblockReadchar(){
+            const int MAX_BUFFER_SIZE=1;
+            char buffer[MAX_BUFFER_SIZE+1];
+            memset(buffer,0,MAX_BUFFER_SIZE);
+            std::string content("");
+            int rlength=0;
+            rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
+            for(int i=0;i<rlength;i++)
+                content+=buffer[i];
+            return buffer[0];
+        }
+        unsigned int StreamSocket::nonblockReaduint(){
+            const int MAX_BUFFER_SIZE=4;
+            unsigned int tmp=0;
+            int rlength=::recv(info.fileDescriptor,&tmp,MAX_BUFFER_SIZE,MSG_DONTWAIT);
+            return tmp;
         }
         bool StreamSocket::checkAlive(){
             const int MAX_BUFFER_SIZE=1;
