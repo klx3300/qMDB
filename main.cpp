@@ -41,6 +41,7 @@ int main() {
     }
 
     t=clock();
+    initEfficientcyCheck();
     for(int i=0;i<TEST_NUM;++i){
         vrep=(char*)redisCommand(conn,"SET k%d %b",i,&info[i],sizeof(testInfo));
         if(!vrep||vrep==(char*)REDIS_ERR){
@@ -52,6 +53,7 @@ int main() {
     t=clock()-t;
     totTime=((double)t)/CLOCKS_PER_SEC;
     cout<<"Insertion test complete in "<<totTime<<" seconds"<<endl;
+    reportEfficiencyCheck();
 
     testInfo* repInfo;
     t=clock();

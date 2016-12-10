@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include "sds.h"
 #include <cstring>
+#include <iostream>
 #include <cctype>
 #include <unistd.h>
 #include <assert.h>
@@ -15,6 +16,7 @@
 #include <sstream>
 #include <cstdarg>
 #include <vector>
+#include <ctime>
 #include "../qSocket/qSocket.hpp"
 
 #define REDIS_ERR -1
@@ -24,6 +26,9 @@
 namespace qLibrary {
 
 namespace qDBClientInterface {
+
+clock_t timertmp;
+clock_t t_internet_r,t_internet_w,t_formatcmd,t_explaincmd;
 
 void bsafe_add(std::string& targetstr,char* src,int size){
     for(int i=0;i<size;i++){
@@ -389,14 +394,27 @@ redisContext* redisConnect(std::string serveraddr,int port){
     return rctx;
 }
 
+void initEfficientcyCheck(){
+    t_internet_r=0;
+    t_formatcmd=0;
+    t_explaincmd=0;
+}
+
+void reportEfficiencyCheck(){
+    std::cout << "[INFO] Internet r/w " << t_internet_r << "/" << t_internet_w << " Format " << t_formatcmd << " Explain " << t_explaincmd << std::endl;
+}
+
 void* redisCommand(redisContext* rctx,std::string fstr,...){
     va_list args;
     va_start(args,fstr);
     char *tmpfmt;
+    timertmp=clock();
     std::vector<int> length=qFakeHiredis::redisvFormatCommand((char**)&tmpfmt,fstr.c_str(),args);
+    t_formatcmd+=clock()-timertmp;
     va_end(args);
     std::string origstr=fstr;
     std::string fedstr;
+    timertmp=clock();
     bsafe_add(fedstr,tmpfmt,length.back());
     length.pop_back();
     char instruct=fstr[0];
@@ -420,7 +438,10 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             dt+=key;
             bsafe_add(dt,(char*)&valuelength,4);
             dt+=value;
+            t_explaincmd+=clock()-timertmp;
+            timertmp=clock();
             rctx->sock.write(dt);
+            t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         case 'G':{
             unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
@@ -430,7 +451,10 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             dt+=(char)4;
             bsafe_add(dt,(char*)&keylength,4);
             dt+=key;
+            t_explaincmd+=clock()-timertmp;
+            timertmp=clock();
             rctx->sock.write(dt);
+            t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         case 'D':{
             unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
@@ -440,7 +464,10 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             dt+=(char)2;
             bsafe_add(dt,(char*)&keylength,4);
             dt+=key;
+            t_explaincmd+=clock()-timertmp;
+            timertmp=clock();
             rctx->sock.write(dt);
+            t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         case 'E':{
             unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
@@ -450,7 +477,10 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             dt+=(char)3;
             bsafe_add(dt,(char*)&keylength,4);
             dt+=key;
+            t_explaincmd+=clock()-timertmp;
+            timertmp=clock();
             rctx->sock.write(dt);
+            t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         default:break;
     }
@@ -471,19 +501,23 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
                 rrep->fake_str=rctx->sock.read(retinst);
                 rrep->str=rrep->fake_str.c_str();
                 rrep->type=REDIS_REPLY_STRING;
+                t_internet_r+=clock()-timertmp;
                 return rrep;
             }else{
+                t_internet_r+=clock()-timertmp;
                 return rrep;
             }
             break;}
         case 198:{
                 rrep->type=REDIS_REPLY_NIL;
+                t_internet_r+=clock()-timertmp;
                 return rrep;
             break;}
         default:{
             rctx->fake_errstr+=statusno;
             printf("%u\n",statusno);
             rctx->errstr=rctx->fake_errstr.c_str();
+            t_internet_r+=clock()-timertmp;
             return NULL;
             break;}
     }
