@@ -56,7 +56,6 @@ int main(int argc,char** argv){
         char instruct=dtpipe.readchar();
         switch(instruct){
             case 1:{
-                std::cout << "[INFO] Received instruction SET" << std::endl;
                 unsigned int keylength=dtpipe.readuint();
                 std::string key=dtpipe.read(keylength);
                 unsigned int valuelength=dtpipe.readuint();
@@ -64,13 +63,11 @@ int main(int argc,char** argv){
                 operationSet(key,value);
                 break;}
             case 2:{
-                std::cout << "[INFO] Received instruction DEL" << std::endl;
                 unsigned int keylength=dtpipe.readuint();
                 std::string key=dtpipe.read(keylength);
                 operationDelete(key);
                 break;}
             case 4:{
-                std::cout << "[INFO] Received instruction GET" << std::endl;
                 unsigned int keylength=dtpipe.readuint();
                 std::string key=dtpipe.read(keylength);
                 operationGet(dtpipe,key);
@@ -106,6 +103,5 @@ int operationGet(qSocket::StreamSocket &dtpipe,std::string key){
         tmp+=(char)198;
         dtpipe.write(tmp);
     }
-    
 }
 

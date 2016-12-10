@@ -18,6 +18,7 @@
 #include "../qSocket/qSocket.hpp"
 
 #define REDIS_ERR -1
+#define REDIS_REPLY_NIL 0
 #define REDIS_REPLY_STRING 1
 
 namespace qLibrary {
@@ -35,6 +36,12 @@ void appendInteger(std::string& str,int i){
 	os<<i;
 	str+=os.str();
 }
+
+void appenduint(std::string& str,unsigned int i){
+    std::ostringstream os;
+    os<<i;
+    str+=os.str();
+};
 
 enum redisConnectionType {
     REDIS_CONN_TCP,
@@ -60,7 +67,7 @@ redisReply::redisReply(){
 class redisContext {
     public:
     int err; /* Error flags, 0 when there is no error */
-    char* errstr;
+    const char* errstr;
     std::string fake_errstr; /* String representation of error when applicable */
     qLibrary::qSocket::StreamSocket sock;
     int flags;
@@ -376,14 +383,16 @@ redisContext* redisConnect(std::string serveraddr,int port){
     addrxport+=":";
     appendInteger(addrxport,port);
     rctx->sock.connect(addrxport);
+    std::string k;
+    k+=(char)42;
+    rctx->sock.write(k);
     return rctx;
 }
 
 void* redisCommand(redisContext* rctx,std::string fstr,...){
     va_list args;
     va_start(args,fstr);
-    char tmpfmt[8192];
-    memset(tmpfmt,0,8192);
+    char *tmpfmt;
     std::vector<int> length=qFakeHiredis::redisvFormatCommand((char**)&tmpfmt,fstr.c_str(),args);
     va_end(args);
     std::string origstr=fstr;
@@ -391,37 +400,56 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
     bsafe_add(fedstr,tmpfmt,length.back());
     length.pop_back();
     char instruct=fstr[0];
+    // substract params
+    fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2); // first line : param counts;
+    fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2); // second line : first param length (command)
+    fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2); // third line : command content
     redisReply* rrep=new redisReply();
     switch(instruct){
-        case 'S':
-
-            break;
+        case 'S':{
+            unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
+            fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2);
+            std::string key=fedstr.substr(0,keylength);
+            fedstr=fedstr.substr(keylength+2);
+            unsigned int valuelength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
+            fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2);
+            std::string value=fedstr.substr(0,valuelength);
+            std::string dt;
+            dt+=(char)1;
+            bsafe_add(dt,(char*)&keylength,4);
+            dt+=key;
+            bsafe_add(dt,(char*)&valuelength,4);
+            dt+=value;
+            rctx->sock.write(dt);
+            break;}
         case 'G':{
-            // remove the first 4 char,and rest are all useful
-            std::string should_sent=fedstr.substr(4);
+            unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
+            fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2);
+            std::string key=fedstr.substr(0,keylength);
             std::string dt;
             dt+=(char)4;
-            unsigned int uitmp=should_sent.length();
-            bsafe_add(dt,(char*)&uitmp,4);
-            dt+=should_sent;
+            bsafe_add(dt,(char*)&keylength,4);
+            dt+=key;
             rctx->sock.write(dt);
             break;}
         case 'D':{
-            std::string should_sent=fedstr.substr(4);
+            unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
+            fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2);
+            std::string key=fedstr.substr(0,keylength);
             std::string dt;
-            dt+=(char)4;
-            unsigned int uitmp=should_sent.length();
-            bsafe_add(dt,(char*)&uitmp,4);
-            dt+=should_sent;
+            dt+=(char)2;
+            bsafe_add(dt,(char*)&keylength,4);
+            dt+=key;
             rctx->sock.write(dt);
             break;}
         case 'E':{
-            std::string should_sent=fedstr.substr(4);
+            unsigned int keylength=(unsigned int)atoi(fedstr.substr(1,fedstr.find_first_of("\r\n")-1).c_str());
+            fedstr=fedstr.substr(fedstr.find_first_of("\r\n")+2);
+            std::string key=fedstr.substr(0,keylength);
             std::string dt;
-            dt+=(char)4;
-            unsigned int uitmp=should_sent.length();
-            bsafe_add(dt,(char*)&uitmp,4);
-            dt+=should_sent;
+            dt+=(char)3;
+            bsafe_add(dt,(char*)&keylength,4);
+            dt+=key;
             rctx->sock.write(dt);
             break;}
         default:break;
@@ -429,20 +457,50 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
 
     // ooh-oh
     // it comes to receiving results!
-    char statusno=rctx->sock.readchar();
-    if(statusno!=80){
+    unsigned char statusno=rctx->sock.readchar();
+    /*if(statusno!=80){
+        rctx->fake_errstr+=statusno;
+        printf("%u\n",statusno);
+        rctx->errstr=rctx->fake_errstr.c_str();
         return NULL;
+    }*/
+    switch(statusno){
+        case 80:{
+            unsigned int retinst=rctx->sock.nonblockReaduint();
+            if(retinst){
+                rrep->fake_str=rctx->sock.read(retinst);
+                rrep->str=rrep->fake_str.c_str();
+                rrep->type=REDIS_REPLY_STRING;
+                return rrep;
+            }else{
+                return rrep;
+            }
+            break;}
+        case 198:{
+                rrep->type=REDIS_REPLY_NIL;
+                return rrep;
+            break;}
+        default:{
+            rctx->fake_errstr+=statusno;
+            printf("%u\n",statusno);
+            rctx->errstr=rctx->fake_errstr.c_str();
+            return NULL;
+            break;}
     }
-    unsigned int retinst=rctx->sock.nonblockReaduint();
-    if(retinst){
-        rrep->fake_str=rctx->sock.read(retinst);
-        rrep->str=rrep->fake_str.c_str();
-        rrep->type=REDIS_REPLY_STRING;
-        return rrep;
-    }else{
-        return rrep;
+
+}
+
+void redisFree(redisContext *rctx){
+    rctx->sock.close();
+    delete rctx;
+}
+
+void freeReplyObject(void *rrep){
+    if((long)rrep!=-1){
+        if(rrep!=NULL){
+            delete (redisReply*)rrep;
+        }
     }
-    
 }
 
 }

@@ -18,7 +18,7 @@
 
 // const values
 
-const std::string serveraddr="127.0.0.1:45175";
+const std::string serveraddr="127.0.0.1:54175";
 
 // const values
 
@@ -299,6 +299,7 @@ int operationDelete(std::string key){
             if(slavedb.find(ss)!=slavedb.end())
                 slavedb[ss].sock.write(tmp);
         }
+        keys.erase(key);
         // SUC
         char x=80;
         std::string tmp;
@@ -353,7 +354,8 @@ int operationGet(std::string key){
             std::string tmp;
             tmp+=(char)40;
             current_sock.write(tmp);
-        }return 0;
+            return 0;
+        }
         // wait for response
         while(1){
             int statusno=gselector.wait(2,qSocket::qSelectorFlags::READ);
@@ -377,9 +379,10 @@ int operationGet(std::string key){
                             tmp+=(*(cpytmp+iii));
                         }
                         tmp+=rdt;
+                    }else{
                     }
                     current_sock.write(tmp);
-                    break;
+                    return 0;
                 }else{
                     for(std::vector<qSocket::StreamSocket>::iterator iter=gselector.r.begin();iter!=gselector.r.end();iter++){
                         // enjoy
@@ -394,7 +397,7 @@ int operationGet(std::string key){
                     std::string tmp;
                     tmp+=(char)40;
                     current_sock.write(tmp);
-                    break;
+                    return 0;
                 }
             }
         }
