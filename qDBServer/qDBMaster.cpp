@@ -18,7 +18,7 @@
 
 // const values
 
-const std::string serveraddr="127.0.0.1:54175";
+const std::string serveraddr="127.0.0.1:45175";
 
 // const values
 
@@ -124,36 +124,43 @@ int main(void){
                         std::string key=x.read(keylen);
                         unsigned int valuelen=x.readuint();
                         std::string value=x.read(valuelen);
+                        x.acceptBeat();
                         operationSet(key,value);
                         break;}
                     case 2:{
                         // delete
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
+                        x.acceptBeat();
                         operationDelete(key);
                         break;}
                     case 3:{
                         // exist
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
+                        x.acceptBeat();
                         operationExist(key);
                         break;}
                     case 4:{
                         // get
+                        std::cout << "[INFO] Received GET " << std::endl;
                         unsigned int keylen=x.readuint();
                         std::string key=x.read(keylen);
+                        x.acceptBeat();
                         operationGet(key);
                         break;}
                     case 5:{
                         // register
                         //unsigned int addrlen=x.readuint();
                         //std::string addr=x.read(addrlen);
+                        //x.acceptBeat();
                         //operationRegister(addr);
                         break;}
                     case 6:{
                         // unregister
                         unsigned int addrlen=x.readuint();
                         std::string addr=x.read(addrlen);
+                        x.acceptBeat();
                         operationUnregister(addr);
                         break;}
                     case 7:{
@@ -196,6 +203,7 @@ int main(void){
                         slaves.push(sl);
                         slavedb[sl.ipaddr]=sl;
                         std::cout << "[INFO] " << sl.ipaddr << " declared himself SLAVE." << std::endl;
+                        x.acceptBeat();
                         break;}
                     case 42:{
                         for(std::vector<qSocket::StreamSocket>::iterator uc=unidentified_connections.begin();uc!=unidentified_connections.end();uc++){
@@ -206,9 +214,11 @@ int main(void){
                         }
                         client_connections.push_back(x);
                         std::cout << "[INFO] " << x.info.address << " declared himself CLIENT." << std::endl;
+                        x.acceptBeat();
                         break;}
                     default:
                         // todo:complete this
+                        x.acceptBeat();
                         break;
                     
                 }               
@@ -239,8 +249,10 @@ int operationSet(std::string key,std::string value){
             // send
             std::string cmp;
             bsafe_add(cmp,dt,9+key.length()+value.length());
-            if(slavedb.find(ss)!=slavedb.end())
+            if(slavedb.find(ss)!=slavedb.end()){
                 slavedb[ss].sock.write(cmp);
+                slavedb[ss].sock.sendBeat();
+            }
         } 
         
     }else{
@@ -268,6 +280,7 @@ int operationSet(std::string key,std::string value){
             std::string cmp;
             bsafe_add(cmp,dt,9+key.length()+value.length());
             sr.sock.write(cmp);
+            sr.sock.sendBeat();
             sr.counts++;
             slaves.push(sr);
             keys[key].push_back(sr.ipaddr);
@@ -278,6 +291,7 @@ int operationSet(std::string key,std::string value){
     std::string tmp;
     tmp+=code;
     current_sock.write(tmp);
+    current_sock.sendBeat();
     return 0;
 }
 
@@ -296,8 +310,10 @@ int operationDelete(std::string key){
             memcpy(dt+5,key.c_str(),key.length());
             std::string tmp;
             bsafe_add(tmp,dt,5+key.length());
-            if(slavedb.find(ss)!=slavedb.end())
+            if(slavedb.find(ss)!=slavedb.end()){
                 slavedb[ss].sock.write(tmp);
+                slavedb[ss].sock.sendBeat();
+            }
         }
         keys.erase(key);
         // SUC
@@ -305,11 +321,13 @@ int operationDelete(std::string key){
         std::string tmp;
         tmp+=x;
         current_sock.write(tmp);
+        current_sock.sendBeat();
     }else{
         char x=198;
         std::string tmp;
         tmp+=x;
         current_sock.write(tmp);
+        current_sock.sendBeat();
     }
 }
 
@@ -322,11 +340,13 @@ int operationExist(std::string key){
          std::string tmp;
          tmp+=x;
          current_sock.write(tmp);
+         current_sock.sendBeat();
     }else{
         char x=198;
         std::string tmp;
         tmp+=x;
         current_sock.write(tmp);
+        current_sock.sendBeat();
     }
 }
 
@@ -348,12 +368,13 @@ int operationGet(std::string key){
             std::string tmp;
             bsafe_add(tmp,dt,5+key.length());
             slavedb[ss].sock.write(tmp);
-
+            slavedb[ss].sock.sendBeat();
         }
         if(gselector.r.size()==0){
             std::string tmp;
             tmp+=(char)40;
             current_sock.write(tmp);
+            current_sock.sendBeat();
             return 0;
         }
         // wait for response
@@ -363,6 +384,7 @@ int operationGet(std::string key){
                 std::string tmp;
                 tmp+=(char)40;
                 current_sock.write(tmp);
+                current_sock.sendBeat();
                 break;
             }
             std::vector<qSocket::StreamSocket> ava=gselector.gets(qSocket::qSelectorFlags::READ);
@@ -374,6 +396,7 @@ int operationGet(std::string key){
                     if(x==80){
                         unsigned int valuelen=a.readuint();
                         std::string rdt=a.read(valuelen);
+                        a.acceptBeat();
                         char* cpytmp=(char*)&valuelen;
                         for(int iii=0;iii<4;iii++){
                             tmp+=(*(cpytmp+iii));
@@ -382,6 +405,7 @@ int operationGet(std::string key){
                     }else{
                     }
                     current_sock.write(tmp);
+                    current_sock.sendBeat();
                     return 0;
                 }else{
                     for(std::vector<qSocket::StreamSocket>::iterator iter=gselector.r.begin();iter!=gselector.r.end();iter++){
@@ -397,6 +421,7 @@ int operationGet(std::string key){
                     std::string tmp;
                     tmp+=(char)40;
                     current_sock.write(tmp);
+                    current_sock.sendBeat();
                     return 0;
                 }
             }
@@ -406,6 +431,7 @@ int operationGet(std::string key){
         std::string tmp;
         tmp+=x;
         current_sock.write(tmp);
+        current_sock.sendBeat();
     }
 }
 
@@ -418,10 +444,12 @@ int operationRegister(std::string slaveaddr){
         std::string tmp;
         tmp+=(char)80;
         current_sock.write(tmp);
+        current_sock.sendBeat();
     }catch(qSocket::StreamSocketConnectException e){
         std::string tmp;
         tmp+=(char)127;
         current_sock.write(tmp);
+        current_sock.sendBeat();
     }
 }
 

@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <ctime>
+#include <linux/tcp.h>
 
 
 #ifndef Q_SOCKET_H
@@ -125,6 +126,7 @@ namespace qLibrary{
                 StreamSocket& listen(int unsettled_connections_limitation);
                 SocketInformation accept(std::string &srcaddr);
                 StreamSocket& write(std::string content);
+                void quickack();
                 std::string read();
                 std::string read(int length);
                 char readchar();
@@ -134,7 +136,8 @@ namespace qLibrary{
                 std::string nonblockRead(int length);
                 char nonblockReadchar();
                 unsigned int nonblockReaduint();
-                bool checkAlive();
+                void sendBeat();
+                void acceptBeat();
         };
         class DiagramSocket : public Socket{
             public:
@@ -263,6 +266,12 @@ namespace qLibrary{
                 return *this;
             }
         }
+
+        void StreamSocket::quickack(){
+            int i=1;
+            ::setsockopt(info.fileDescriptor,IPPROTO_TCP,TCP_QUICKACK,&i,sizeof(int));
+        }
+
         // StreamSocket
         StreamSocket& StreamSocket::connect(std::string address){
             if(info.domain==AF_INET){
@@ -334,6 +343,7 @@ namespace qLibrary{
                     content+=buffer[i];
                 }
             }while(rlength!=0);
+            quickack();
             return content;
         }
         std::string StreamSocket::read(int length){
@@ -345,7 +355,8 @@ namespace qLibrary{
             rlength=::read(info.fileDescriptor,buffer,MAX_BUFFER_SIZE);
             for(int i=0;i<rlength;i++){
                 content+=buffer[i];
-            } 
+            }
+            quickack();
             return content;
         }
 
@@ -359,6 +370,7 @@ namespace qLibrary{
             for(int i=0;i<rlength;i++){
                 content+=buffer[i];
             }
+            quickack();
             return buffer[0];
         }
 
@@ -367,6 +379,7 @@ namespace qLibrary{
             unsigned int buffer;
             int rlength=0;
             rlength=::read(info.fileDescriptor,&buffer,MAX_BUFFER_SIZE);
+            quickack();
             return buffer;
         }
 
@@ -375,6 +388,7 @@ namespace qLibrary{
             int buffer;
             int rlength=0;
             rlength=::read(info.fileDescriptor,&buffer,MAX_BUFFER_SIZE);
+            quickack();
             return buffer;
         }
         std::string StreamSocket::nonblockRead(){
@@ -388,6 +402,7 @@ namespace qLibrary{
                 for(int i=0;i<rlength;i++)
                     content+=buffer[i];
             }while(rlength!=0);
+            quickack();
             return content;
         }
         std::string StreamSocket::nonblockRead(int length){
@@ -399,6 +414,7 @@ namespace qLibrary{
             rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
             for(int i=0;i<rlength;i++)
                 content+=buffer[i];
+            quickack();
             return content;
         }
         char StreamSocket::nonblockReadchar(){
@@ -410,25 +426,23 @@ namespace qLibrary{
             rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
             for(int i=0;i<rlength;i++)
                 content+=buffer[i];
+            quickack();
             return buffer[0];
         }
         unsigned int StreamSocket::nonblockReaduint(){
             const int MAX_BUFFER_SIZE=4;
             unsigned int tmp=0;
             int rlength=::recv(info.fileDescriptor,&tmp,MAX_BUFFER_SIZE,MSG_DONTWAIT);
+            quickack();
             return tmp;
         }
-        bool StreamSocket::checkAlive(){
-            const int MAX_BUFFER_SIZE=1;
-            char buffer[MAX_BUFFER_SIZE+1];
-            memset(buffer,0,MAX_BUFFER_SIZE);
-            std::string content("");
-            int rlength=0;
-            rlength=::recv(info.fileDescriptor,buffer,MAX_BUFFER_SIZE,MSG_DONTWAIT);
-            for(int i=0;i<rlength;i++){
-                content+=buffer[i];
-            }
-            return buffer[0];
+
+        void StreamSocket::sendBeat(){
+            this->write("FUCK");
+        }
+
+        void StreamSocket::acceptBeat(){
+            this->read(4);
         }
         StreamSocket& StreamSocket::write(std::string content){
             int written=::write(info.fileDescriptor,content.c_str(),content.length());
@@ -436,6 +450,7 @@ namespace qLibrary{
                 StreamSocketIOException e("Func call write() returned -1.");
                 throw e;
             }
+            quickack();
             return *this;
         }
     }

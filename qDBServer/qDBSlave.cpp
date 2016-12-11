@@ -50,6 +50,7 @@ int main(int argc,char** argv){
     dtpipe.connect(masteraddr);
     tmp+=(char)41;
     dtpipe.write(tmp);
+    dtpipe.sendBeat();
     std::cout << "[INFO] Connection with master " << masteraddr << " established." << std::endl;
     while(1){
         // accept instructions
@@ -60,19 +61,23 @@ int main(int argc,char** argv){
                 std::string key=dtpipe.read(keylength);
                 unsigned int valuelength=dtpipe.readuint();
                 std::string value=dtpipe.read(valuelength);
+                dtpipe.acceptBeat();
                 operationSet(key,value);
                 break;}
             case 2:{
                 unsigned int keylength=dtpipe.readuint();
                 std::string key=dtpipe.read(keylength);
+                dtpipe.acceptBeat();
                 operationDelete(key);
                 break;}
             case 4:{
                 unsigned int keylength=dtpipe.readuint();
                 std::string key=dtpipe.read(keylength);
+                dtpipe.acceptBeat();
                 operationGet(dtpipe,key);
                 break;}
             default:
+                   dtpipe.acceptBeat();
                 break;
         }
     }
@@ -98,10 +103,12 @@ int operationGet(qSocket::StreamSocket &dtpipe,std::string key){
         std::string tmp;
         bsafe_add(tmp,dt,5+valuev.length());
         dtpipe.write(tmp);
+        dtpipe.sendBeat();
     }else{
         std::string tmp;
         tmp+=(char)198;
         dtpipe.write(tmp);
+        dtpipe.sendBeat();
     }
 }
 

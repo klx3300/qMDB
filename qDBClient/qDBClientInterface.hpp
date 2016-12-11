@@ -391,6 +391,7 @@ redisContext* redisConnect(std::string serveraddr,int port){
     std::string k;
     k+=(char)42;
     rctx->sock.write(k);
+    rctx->sock.sendBeat();
     return rctx;
 }
 
@@ -441,6 +442,7 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             t_explaincmd+=clock()-timertmp;
             timertmp=clock();
             rctx->sock.write(dt);
+            rctx->sock.sendBeat();
             t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         case 'G':{
@@ -454,6 +456,7 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             t_explaincmd+=clock()-timertmp;
             timertmp=clock();
             rctx->sock.write(dt);
+            rctx->sock.sendBeat();
             t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         case 'D':{
@@ -467,6 +470,7 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             t_explaincmd+=clock()-timertmp;
             timertmp=clock();
             rctx->sock.write(dt);
+            rctx->sock.sendBeat();
             t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         case 'E':{
@@ -480,6 +484,7 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             t_explaincmd+=clock()-timertmp;
             timertmp=clock();
             rctx->sock.write(dt);
+            rctx->sock.sendBeat();
             t_internet_w+=clock()-timertmp;timertmp=clock();
             break;}
         default:break;
@@ -496,12 +501,15 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
     }*/
     switch(statusno){
         case 80:{
-            unsigned int retinst=rctx->sock.nonblockReaduint();
-            if(retinst){
+            std::string retrr=rctx->sock.read(4);
+            if(retrr!="FUCK"){
+                unsigned int retinst=0;
+                memcpy(&retinst,retrr.c_str(),4);
                 rrep->fake_str=rctx->sock.read(retinst);
                 rrep->str=rrep->fake_str.c_str();
                 rrep->type=REDIS_REPLY_STRING;
                 t_internet_r+=clock()-timertmp;
+                rctx->sock.acceptBeat();
                 return rrep;
             }else{
                 t_internet_r+=clock()-timertmp;
@@ -511,6 +519,7 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
         case 198:{
                 rrep->type=REDIS_REPLY_NIL;
                 t_internet_r+=clock()-timertmp;
+                rctx->sock.acceptBeat();
                 return rrep;
             break;}
         default:{
@@ -518,9 +527,11 @@ void* redisCommand(redisContext* rctx,std::string fstr,...){
             printf("%u\n",statusno);
             rctx->errstr=rctx->fake_errstr.c_str();
             t_internet_r+=clock()-timertmp;
+            rctx->sock.acceptBeat();
             return NULL;
             break;}
     }
+    
 
 }
 
